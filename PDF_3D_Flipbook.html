@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>French Atelier — 3D Book</title>
+
+<!--
+  FRENCH ATELIER
+  A polished single-file PDF flipbook.
+  Usage:
+    1. Open this HTML in Chrome/Edge/Firefox.
+    2. Choose your PDF.
+    3. Drag/swipe the page to turn it.
+  Internet is required because PDF.js and StPageFlip are loaded from CDNs.
+-->
+<link rel="preconnect" href="https://cdnjs.cloudflare.com">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+
+<style>
+:root{
+  --bg:#090b0f;
+  --surface:#11151b;
+  --surface2:#181d25;
+  --line:#2a303a;
+  --text:#f6f1e7;
+  --muted:#9ba2ad;
+  --gold:#d7b46a;
+  --gold2:#f0d69a;
+  --paper:#f7f3e9;
+  --shadow:rgba(0,0,0,.58);
+}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden}
+body{
+  color:var(--text);
+  background:
+    radial-gradient(ellipse at 50% 38%,#272d36 0%,#11151b 43%,#06070a 100%);
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+button,input{font:inherit}
+button{cursor:pointer}
+
+.app{height:100dvh;display:grid;grid-template-rows:72px 1fr 74px}
+
+/* ───────── top ───────── */
+.top{
+  display:flex;align-items:center;gap:18px;padding:0 24px;
+  background:rgba(9,11,15,.86);
+  border-bottom:1px solid var(--line);
+  backdrop-filter:blur(18px);
+  z-index:20;
+}
+.logo{display:flex;align-items:center;gap:12px;min-width:230px}
+.logoMark{
+  width:43px;height:43px;border-radius:13px;display:grid;place-items:center;
+  border:1px solid #705b35;
+  background:linear-gradient(145deg,#322b1d,#15171b);
+  color:var(--gold2);font:26px Georgia,serif;
+  box-shadow:inset 0 0 0 1px #443a27,0 6px 20px #0005;
+}
+.logoTitle{font:600 17px Georgia,serif;letter-spacing:.4px}
+.logoSub{display:block;margin-top:3px;color:var(--gold);font-size:8px;letter-spacing:2.7px}
+
+.search{
+  position:relative;flex:1;max-width:470px;margin:auto;
+}
+.searchIcon{position:absolute;left:15px;top:9px;color:#7e8691}
+#jump{
+  width:100%;height:42px;padding:0 16px 0 39px;
+  border:1px solid var(--line);border-radius:22px;
+  background:#171b21;color:var(--text);outline:none;
+}
+#jump:focus{border-color:#75613b;box-shadow:0 0 0 3px #d7b46a16}
+
+.topActions{display:flex;gap:8px}
+.iconBtn{
+  width:42px;height:42px;border:1px solid var(--line);border-radius:12px;
+  background:var(--surface2);color:#e8e4dc;font-size:18px;
+}
+.iconBtn:hover{border-color:#75613b;color:var(--gold2)}
+
+/* ───────── reader ───────── */
+.reader{position:relative;min-height:0;display:flex;overflow:hidden}
+.stage{
+  position:relative;flex:1;min-width:0;display:flex;
+  align-items:center;justify-content:center;overflow:hidden;
+}
+.stage::before{
+  content:"";position:absolute;width:65%;height:58%;
+  background:#d7b46a16;filter:blur(80px);border-radius:50%;
+}
+#book{
+  position:relative;z-index:3;
+  width:min(90vw,1180px);height:min(79vh,790px);
+  transition:transform .22s ease;
+}
+.page{
+  background:var(--paper);
+  overflow:hidden;
+  box-shadow:0 20px 55px var(--shadow);
+}
+.page canvas{
+  display:block;width:100%;height:100%;object-fit:contain;
+}
+
+/* welcome */
+#welcome{
+  position:absolute;z-index:12;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(92%,430px);padding:30px 28px;text-align:center;
+  border:1px solid #343a44;border-radius:22px;
+  background:rgba(13,16,21,.92);
+  box-shadow:0 28px 90px #000a;
+  backdrop-filter:blur(18px);
+}
+#welcome .bookIcon{
+  width:65px;height:65px;margin:0 auto 17px;border-radius:18px;
+  display:grid;place-items:center;background:#211e18;border:1px solid #6e5a36;
+  color:var(--gold2);font:34px Georgia,serif;
+}
+#welcome h1{margin:0;font:600 27px Georgia,serif}
+#welcome p{margin:9px 0 21px;color:var(--muted);font-size:13px;line-height:1.6}
+#openPdf{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-height:46px;padding:0 24px;border:0;border-radius:13px;
+  background:linear-gradient(135deg,var(--gold2),var(--gold));
+  color:#17130b;font-weight:800;
+}
+#file{display:none}
+.note{margin-top:13px!important;font-size:10px!important;color:#707782!important}
+
+/* loading */
+#loading{
+  position:absolute;z-index:15;display:none;left:50%;top:50%;
+  transform:translate(-50%,-50%);
+  width:min(90%,360px);padding:24px;border-radius:18px;
+  background:#0d1015f2;border:1px solid #343a44;text-align:center;
+}
+.spinner{
+  width:30px;height:30px;margin:0 auto 13px;border-radius:50%;
+  border:3px solid #363b44;border-top-color:var(--gold);
+  animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loadingTitle{font:600 18px Georgia,serif}
+#loadingText{margin-top:6px;color:var(--muted);font-size:12px}
+
+/* toast */
+#toast{
+  position:absolute;z-index:30;left:50%;bottom:20px;transform:translate(-50%,20px);
+  padding:10px 15px;border:1px solid #363c46;border-radius:12px;
+  background:#0c0f14f2;color:#e9e6de;font-size:12px;
+  opacity:0;pointer-events:none;transition:.25s;
+}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ───────── thumbnails ───────── */
+#drawer{
+  width:0;overflow:hidden;flex:none;
+  background:#0e1116;border-left:1px solid var(--line);
+  transition:width .25s ease;
+}
+#drawer.open{width:270px}
+.drawerInner{width:270px;height:100%;padding:18px 14px;overflow:auto}
+.drawerHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.drawerHead b{font:600 18px Georgia,serif}
+.closeDrawer{background:none;border:0;color:#aeb4bd;font-size:22px}
+.thumbs{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.thumb{
+  height:142px;border:1px solid #303640;border-radius:8px;
+  background:#eee;overflow:hidden;position:relative;cursor:pointer;
+}
+.thumb canvas{width:100%;height:100%;object-fit:contain}
+.thumb span{
+  position:absolute;right:5px;bottom:5px;padding:2px 6px;
+  border-radius:6px;background:#000b;color:white;font-size:9px;
+}
+.thumb.active{border:2px solid var(--gold)}
+
+/* ───────── bottom ───────── */
+.bottom{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:0 18px;background:rgba(12,14,18,.96);
+  border-top:1px solid var(--line);z-index:20;
+}
+.ctrl{
+  min-width:43px;height:43px;padding:0 12px;
+  border:1px solid var(--line);border-radius:12px;
+  background:var(--surface2);color:#ece8df;
+}
+.ctrl:hover{border-color:#75613b}
+.ctrl.main{
+  border-color:var(--gold);background:var(--gold);color:#151108;font-weight:800;
+}
+.pageInfo{min-width:120px;text-align:center;color:#c7cad0;font-size:12px;font-variant-numeric:tabular-nums}
+#slider{width:min(250px,24vw);accent-color:var(--gold)}
+#zoomText{width:47px;text-align:center;color:#9da3ad;font-size:11px}
+
+/* light reading mode */
+body.light{
+  --bg:#d8d4ca;--surface:#f1eee7;--surface2:#e8e3d8;--line:#c6c0b3;
+  --text:#25231f;--muted:#6e6a62;
+  background:#d8d4ca;
+}
+body.light .top,body.light .bottom{background:#eeebe4e8}
+body.light #jump{background:#e5e1d8;color:#25231f}
+body.light .stage::before{background:#a27b3b12}
+
+/* ───────── mobile ───────── */
+@media(max-width:760px){
+  .app{grid-template-rows:58px 1fr 67px}
+  .top{padding:0 11px;gap:9px}
+  .logo{min-width:auto}.logoWords{display:none}
+  .logoMark{width:38px;height:38px}
+  .search{max-width:none}
+  .topActions{gap:5px}
+  .iconBtn{width:38px;height:38px}
+  #book{width:99vw;height:calc(100vh - 125px)}
+  .bottom{gap:5px;padding:0 7px}
+  .ctrl{min-width:39px;height:39px;padding:0 9px}
+  .pageInfo{min-width:75px}
+  #slider{width:20vw}
+  #zoomText{display:none}
+  #drawer.open{width:235px}
+  .drawerInner{width:235px}
+}
+@media(max-width:420px){
+  .top .search{display:none}
+  .bottom .firstLast{display:none}
+  .pageInfo{min-width:65px}
+}
+</style>
+</head>
+
+<body>
+<div class="app">
+
+<header class="top">
+  <div class="logo">
+    <div class="logoMark">ƒ</div>
+    <div class="logoWords">
+      <div class="logoTitle">French Atelier</div>
+      <span class="logoSub">UNIVERSAL PDF • 3D READER</span>
+    </div>
+  </div>
+
+  <div class="search">
+    <span class="searchIcon">⌕</span>
+    <input id="jump" type="number" min="1" placeholder="Jump to page…">
+  </div>
+
+  <div class="topActions">
+    <button class="iconBtn" id="thumbBtn" title="Pages">▦</button>
+    <button class="iconBtn" id="modeBtn" title="Reading mode">☾</button>
+    <button class="iconBtn" id="fullBtn" title="Fullscreen">⛶</button>
+  </div>
+</header>
+
+<main class="reader">
+  <section class="stage">
+    <div id="book"></div>
+
+    <div id="welcome">
+      <div class="bookIcon">ƒ</div>
+      <h1>Your Digital Library</h1>
+      <p>A clean, immersive 3D reading experience for your PDF.<br>
+         Swipe, drag, or use the controls to turn pages.</p>
+      <label id="openPdf" for="file">Open PDF</label>
+      <input id="file" type="file" accept="application/pdf">
+      <p class="note">The PDF stays on your device while you read it.</p>
+    </div>
+
+    <div id="loading">
+      <div class="spinner"></div>
+      <div id="loadingTitle">Preparing your book</div>
+      <div id="loadingText">Reading PDF…</div>
+    </div>
+
+    <div id="toast"></div>
+  </section>
+
+  <aside id="drawer">
+    <div class="drawerInner">
+      <div class="drawerHead">
+        <b>Pages</b>
+        <button class="closeDrawer" id="closeDrawer">×</button>
+      </div>
+      <div class="thumbs" id="thumbs"></div>
+    </div>
+  </aside>
+</main>
+
+<footer class="bottom">
+  <button class="ctrl firstLast" id="first" title="First page">«</button>
+  <button class="ctrl" id="prev" title="Previous page">‹</button>
+  <div class="pageInfo" id="pageInfo">Open your book</div>
+  <button class="ctrl main" id="next" title="Next page">›</button>
+  <button class="ctrl firstLast" id="last" title="Last page">»</button>
+  <input id="slider" type="range" min="1" max="1" value="1" title="Page">
+  <button class="ctrl" id="zoomOut" title="Zoom out">−</button>
+  <span id="zoomText">100%</span>
+  <button class="ctrl" id="zoomIn" title="Zoom in">+</button>
+</footer>
+</div>
+
+<!-- PDF renderer + realistic page-turn engine -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
+
+<script>
+(() => {
+  "use strict";
+
+  const $ = id => document.getElementById(id);
+  let pdf = null;
+  let flip = null;
+  let total = 0;
+  let zoom = 1;
+  const rendered = new Set();
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+  function toast(message){
+    const t = $("toast");
+    t.textContent = message;
+    t.classList.add("show");
+    clearTimeout(window.__toast);
+    window.__toast = setTimeout(() => t.classList.remove("show"), 1800);
+  }
+
+  function updateUI(page){
+    page = Math.max(1, Math.min(total, page));
+    $("pageInfo").textContent = `Page ${page} / ${total}`;
+    $("slider").value = page;
+    document.querySelectorAll(".thumb").forEach(t =>
+      t.classList.toggle("active", Number(t.dataset.page) === page)
+    );
+  }
+
+  async function renderPage(pageNumber, thumbnail=false){
+    if (!pdf || pageNumber < 1 || pageNumber > total) return;
+
+    const key = `${thumbnail ? "t" : "p"}${pageNumber}`;
+    if (rendered.has(key)) return;
+
+    const selector = thumbnail
+      ? `.thumb[data-page="${pageNumber}"] canvas`
+      : `.page[data-page="${pageNumber}"] canvas`;
+
+    const canvas = document.querySelector(selector);
+    if (!canvas) return;
+
+    rendered.add(key);
+
+    const page = await pdf.getPage(pageNumber);
+    const viewport = page.getViewport({
+      scale: thumbnail ? 0.42 : 1.55
+    });
+
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+
+    await page.render({
+      canvasContext: canvas.getContext("2d", {alpha:false}),
+      viewport
+    }).promise;
+  }
+
+  async function renderAround(page){
+    const start = Math.max(1, page - 3);
+    const end = Math.min(total, page + 4);
+    for(let n = start; n <= end; n++){
+      await renderPage(n);
+    }
+  }
+
+  async function buildThumbnails(){
+    const container = $("thumbs");
+    container.innerHTML = "";
+
+    // Useful landmarks instead of rendering 657 thumbnails at once.
+    const points = [];
+    const add = n => {
+      if(n >= 1 && n <= total && !points.includes(n)) points.push(n);
+    };
+
+    for(let n=1; n<=Math.min(12,total); n++) add(n);
+    for(let n=25; n<=total; n+=25) add(n);
+    add(total);
+
+    for(const n of points){
+      const el = document.createElement("div");
+      el.className = "thumb";
+      el.dataset.page = n;
+      el.innerHTML = `<canvas></canvas><span>${n}</span>`;
+      container.appendChild(el);
+
+      el.addEventListener("click", () => {
+        if(!flip) return;
+        flip.turnToPage(n - 1);
+        updateUI(n);
+        renderAround(n);
+      });
+
+      await renderPage(n, true);
+    }
+  }
+
+  async function openPDF(file){
+    if(!file) return;
+
+    $("welcome").style.display = "none";
+    $("loading").style.display = "block";
+    $("loadingText").textContent = "Opening PDF…";
+
+    try{
+      const data = await file.arrayBuffer();
+      pdf = await pdfjsLib.getDocument({data}).promise;
+      total = pdf.numPages;
+
+      $("slider").max = total;
+      $("loadingText").textContent = `Creating ${total} pages…`;
+
+      const book = $("book");
+      book.innerHTML = "";
+
+      for(let i=1; i<=total; i++){
+        const page = document.createElement("div");
+        page.className = "page";
+        page.dataset.page = i;
+        page.innerHTML = "<canvas></canvas>";
+        book.appendChild(page);
+      }
+
+      flip = new St.PageFlip(book, {
+        width: 540,
+        height: 730,
+        size: "stretch",
+        minWidth: 250,
+        maxWidth: 900,
+        minHeight: 340,
+        maxHeight: 1100,
+        showCover: true,
+        usePortrait: true,
+        drawShadow: true,
+        maxShadowOpacity: 0.62,
+        flippingTime: 900,
+        swipeDistance: 18,
+        mobileScrollSupport: false,
+        clickEventForward: true,
+        autoSize: true
+      });
+
+      flip.loadFromHTML(document.querySelectorAll(".page"));
+
+      flip.on("flip", e => {
+        const page = e.data + 1;
+        updateUI(page);
+        renderAround(page);
+      });
+
+      $("loading").style.display = "none";
+
+      const saved = Number(sessionStorage.getItem("frenchAtelierPage") || 1);
+      const initial = Math.max(1, Math.min(total, saved));
+
+      flip.turnToPage(initial - 1);
+      updateUI(initial);
+      await renderAround(initial);
+      buildThumbnails();
+
+      toast("Ready — drag or swipe a page");
+    }catch(error){
+      console.error(error);
+      $("loading").style.display = "none";
+      $("welcome").style.display = "block";
+      toast("Could not open this PDF");
+    }
+  }
+
+  $("file").addEventListener("change", e => {
+    if(e.target.files[0]) openPDF(e.target.files[0]);
+  });
+
+  $("prev").onclick = () => flip && flip.flipPrev();
+  $("next").onclick = () => flip && flip.flipNext();
+  $("first").onclick = () => flip && flip.turnToPage(0);
+  $("last").onclick = () => flip && flip.turnToPage(total - 1);
+
+  $("slider").addEventListener("input", e => {
+    if(!flip) return;
+    const p = Number(e.target.value);
+    flip.turnToPage(p - 1);
+    updateUI(p);
+    renderAround(p);
+  });
+
+  $("jump").addEventListener("keydown", e => {
+    if(e.key !== "Enter" || !flip) return;
+    const p = Number(e.target.value);
+    if(p >= 1 && p <= total){
+      flip.turnToPage(p - 1);
+      updateUI(p);
+      renderAround(p);
+      e.target.value = "";
+    }else{
+      toast(`Choose a page from 1 to ${total}`);
+    }
+  });
+
+  $("thumbBtn").onclick = () => $("drawer").classList.toggle("open");
+  $("closeDrawer").onclick = () => $("drawer").classList.remove("open");
+
+  $("modeBtn").onclick = () => {
+    document.body.classList.toggle("light");
+    $("modeBtn").textContent =
+      document.body.classList.contains("light") ? "☀" : "☾";
+  };
+
+  $("fullBtn").onclick = async () => {
+    try{
+      if(!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      else await document.exitFullscreen();
+    }catch(_){}
+  };
+
+  $("zoomIn").onclick = () => {
+    zoom = Math.min(1.5, +(zoom + 0.1).toFixed(1));
+    $("book").style.transform = `scale(${zoom})`;
+    $("zoomText").textContent = `${Math.round(zoom * 100)}%`;
+  };
+
+  $("zoomOut").onclick = () => {
+    zoom = Math.max(0.75, +(zoom - 0.1).toFixed(1));
+    $("book").style.transform = `scale(${zoom})`;
+    $("zoomText").textContent = `${Math.round(zoom * 100)}%`;
+  };
+
+  document.addEventListener("keydown", e => {
+    if(!flip) return;
+    if(e.key === "ArrowRight") flip.flipNext();
+    if(e.key === "ArrowLeft") flip.flipPrev();
+    if(e.key === "Home") flip.turnToPage(0);
+    if(e.key === "End") flip.turnToPage(total - 1);
+  });
+
+})();
+</script>
+</body>
+</html>
