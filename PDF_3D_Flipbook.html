@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>French Atelier — 3D Book</title>
+<title>Universal PDF — 3D Book</title>
 
 <!--
-  FRENCH ATELIER
+  UNIVERSAL PDF
   A polished single-file PDF flipbook.
   Usage:
     1. Open this HTML in Chrome/Edge/Firefox.
@@ -92,7 +92,7 @@ button{cursor:pointer}
 }
 #book{
   position:relative;z-index:3;
-  width:min(90vw,1180px);height:min(79vh,790px);
+  width:min(88vw,1180px);height:min(80vh,800px);
   transition:transform .22s ease;
 }
 .page{
@@ -229,6 +229,76 @@ body.light .stage::before{background:#a27b3b12}
   .bottom .firstLast{display:none}
   .pageInfo{min-width:65px}
 }
+
+/* --- REALISTIC PAPER / SPINE ENHANCEMENT --- */
+#book {
+  perspective: 2200px !important;
+  transform-style: preserve-3d;
+}
+.stf__parent {
+  perspective: 2200px !important;
+  transform-style: preserve-3d;
+}
+.stf__block {
+  transform-style: preserve-3d !important;
+}
+.stf__item {
+  transform-style: preserve-3d !important;
+  backface-visibility: hidden;
+}
+.stf__item > div {
+  transform-style: preserve-3d !important;
+  backface-visibility: hidden;
+  overflow: hidden;
+}
+.stf__item.--simple {
+  box-shadow:
+    0 8px 24px rgba(0,0,0,.16),
+    0 1px 2px rgba(0,0,0,.18);
+}
+.stf__item.--hard {
+  box-shadow:
+    0 12px 34px rgba(0,0,0,.22),
+    0 1px 3px rgba(0,0,0,.2);
+}
+/* Subtle paper edge highlights */
+.pdf-page::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg,
+      rgba(255,255,255,.13),
+      transparent 3%,
+      transparent 97%,
+      rgba(0,0,0,.07));
+  mix-blend-mode: multiply;
+}
+/* Spine atmosphere behind the spread */
+#book::before {
+  content: "";
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  top: 2%;
+  bottom: 2%;
+  width: 20px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(0,0,0,.035) 25%,
+    rgba(0,0,0,.13) 50%,
+    rgba(0,0,0,.035) 75%,
+    transparent 100%);
+  filter: blur(3px);
+  opacity: .75;
+}
+@media (max-width: 800px) {
+  #book::before { width: 12px; }
+}
+
 </style>
 </head>
 
@@ -239,7 +309,7 @@ body.light .stage::before{background:#a27b3b12}
   <div class="logo">
     <div class="logoMark">ƒ</div>
     <div class="logoWords">
-      <div class="logoTitle">French Atelier</div>
+      <div class="logoTitle">Universal PDF</div>
       <span class="logoSub">UNIVERSAL PDF • 3D READER</span>
     </div>
   </div>
@@ -251,6 +321,7 @@ body.light .stage::before{background:#a27b3b12}
 
   <div class="topActions">
     <button class="iconBtn" id="thumbBtn" title="Pages">▦</button>
+    <button class="iconBtn" id="soundBtn" title="Page-turn sound">🔊</button>
     <button class="iconBtn" id="modeBtn" title="Reading mode">☾</button>
     <button class="iconBtn" id="fullBtn" title="Fullscreen">⛶</button>
   </div>
@@ -264,7 +335,7 @@ body.light .stage::before{background:#a27b3b12}
       <div class="bookIcon">ƒ</div>
       <h1>Your Digital Library</h1>
       <p>A clean, immersive 3D reading experience for your PDF.<br>
-         Swipe, drag, or use the controls to turn pages.</p>
+         The cover opens alone, then the book continues as two-page spreads.</p>
       <label id="openPdf" for="file">Open PDF</label>
       <input id="file" type="file" accept="application/pdf">
       <p class="note">The PDF stays on your device while you read it.</p>
@@ -307,11 +378,150 @@ body.light .stage::before{background:#a27b3b12}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
 
+
+<script>
+/*
+  Natural page-turn audio:
+  - starts when a fold actually begins
+  - continuous soft paper movement while the page is moving
+  - several short irregular "fiber" grains
+  - quiet settling sound at the end
+  All audio is generated locally with Web Audio; no audio file is required.
+*/
+(() => {
+  let ctx = null, master = null, enabled = true;
+  let motion = null, grainTimer = null, lastState = "read";
+  let lastPage = 1;
+
+  function init(){
+    if(!ctx){
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      master = ctx.createGain();
+      master.gain.value = 0.23;
+      master.connect(ctx.destination);
+    }
+    if(ctx.state === "suspended") ctx.resume();
+  }
+
+  function makeNoise(seconds){
+    const length = Math.floor(ctx.sampleRate * seconds);
+    const b = ctx.createBuffer(1, length, ctx.sampleRate);
+    const d = b.getChannelData(0);
+    let prev = 0;
+    for(let i=0;i<length;i++){
+      const white = Math.random()*2-1;
+      // Slight correlation makes it less like harsh digital hiss.
+      prev = prev*0.72 + white*0.28;
+      const fade = Math.sin(Math.PI*i/length);
+      d[i] = prev * fade;
+    }
+    return b;
+  }
+
+  function grain(intensity=1){
+    if(!enabled || !ctx) return;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = makeNoise(0.075 + Math.random()*0.09);
+
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 1700 + Math.random()*2500;
+    bp.Q.value = 0.65 + Math.random()*1.2;
+
+    const g = ctx.createGain();
+    const a = (0.018 + Math.random()*0.035) * intensity;
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.linearRampToValueAtTime(a,t+0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+0.07+Math.random()*0.08);
+
+    src.connect(bp).connect(g).connect(master);
+    src.start(t);
+    src.stop(t+0.18);
+  }
+
+  function begin(direction=1){
+    if(!enabled) return;
+    init();
+    if(motion) return;
+
+    // Broad, very quiet "air" of a sheet moving.
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = makeNoise(0.9);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(850,t);
+    filter.frequency.linearRampToValueAtTime(1450,t+0.45);
+    filter.frequency.linearRampToValueAtTime(650,t+0.82);
+    filter.Q.value = 0.38;
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.linearRampToValueAtTime(0.055,t+0.09);
+    g.gain.linearRampToValueAtTime(0.025,t+0.48);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+0.86);
+
+    src.connect(filter).connect(g).connect(master);
+    src.start(t);
+    src.stop(t+0.9);
+
+    motion = {direction, started:t};
+    clearInterval(grainTimer);
+    grainTimer = setInterval(() => {
+      if(!motion) return;
+      // Irregular bursts are closer to real paper fibers than one continuous hiss.
+      grain(0.55 + Math.random()*0.65);
+      if(Math.random() < 0.28) setTimeout(() => grain(0.35), 22+Math.random()*55);
+    }, 115+Math.random()*65);
+  }
+
+  function finish(){
+    if(!motion || !enabled) return;
+    const t = ctx.currentTime;
+
+    // Tiny "settle" — not a click/thump.
+    const src = ctx.createBufferSource();
+    src.buffer = makeNoise(0.14);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 1250;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.linearRampToValueAtTime(0.028,t+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+0.13);
+    src.connect(lp).connect(g).connect(master);
+    src.start(t);
+    src.stop(t+0.16);
+
+    clearInterval(grainTimer);
+    grainTimer = null;
+    motion = null;
+  }
+
+  window.FrenchBookSound = {
+    enable(){ enabled=true; init(); master.gain.setTargetAtTime(0.23,ctx.currentTime,0.04); },
+    disable(){ enabled=false; if(ctx) master.gain.setTargetAtTime(0,ctx.currentTime,0.04); clearInterval(grainTimer); grainTimer=null; motion=null; },
+    toggle(){ enabled ? this.disable() : this.enable(); return enabled; },
+    start(direction=1){ begin(direction); },
+    finish(){ finish(); },
+    prime(){ init(); },
+    setPage(p){ lastPage=p; }
+  };
+})();
+</script>
+
 <script>
 (() => {
   "use strict";
 
   const $ = id => document.getElementById(id);
+
+  // Unlock browser audio after the user's first touch/click.
+  window.addEventListener("pointerdown", () => {
+    if(window.FrenchBookSound) FrenchBookSound.prime();
+  }, {once:true});
   let pdf = null;
   let flip = null;
   let total = 0;
@@ -331,7 +541,10 @@ body.light .stage::before{background:#a27b3b12}
 
   function updateUI(page){
     page = Math.max(1, Math.min(total, page));
-    $("pageInfo").textContent = `Page ${page} / ${total}`;
+    const shown = page === 1
+      ? "Cover"
+      : (page < total ? `${page}–${Math.min(page + 1, total)}` : `${page}`);
+    $("pageInfo").textContent = `${shown} / ${total}`;
     $("slider").value = page;
     document.querySelectorAll(".thumb").forEach(t =>
       t.classList.toggle("active", Number(t.dataset.page) === page)
@@ -429,6 +642,8 @@ body.light .stage::before{background:#a27b3b12}
         const page = document.createElement("div");
         page.className = "page";
         page.dataset.page = i;
+        // Explicit hard covers guarantee single-page cover mode.
+        if (i === 1 || i === total) page.dataset.density = "hard";
         page.innerHTML = "<canvas></canvas>";
         book.appendChild(page);
       }
@@ -454,10 +669,30 @@ body.light .stage::before{background:#a27b3b12}
 
       flip.loadFromHTML(document.querySelectorAll(".page"));
 
+      // Start strictly on the hard front cover.
+      flip.turnToPage(0);
+      updateUI(1);
+
+      flip.on("changeState", e => {
+        const state = String(e.data || "");
+        if(!window.FrenchBookSound) return;
+
+        if(state === "fold_corner" || state === "user_fold" || state === "flipping"){
+          const current = flip.getCurrentPageIndex ? flip.getCurrentPageIndex() + 1 : 1;
+          const direction = current >= (window.__lastBookPage || 1) ? 1 : -1;
+          FrenchBookSound.start(direction);
+        }
+        if(state === "read"){
+          FrenchBookSound.finish();
+        }
+      });
+
       flip.on("flip", e => {
         const page = e.data + 1;
         updateUI(page);
         renderAround(page);
+        window.__lastBookPage = page;
+        if(window.FrenchBookSound) FrenchBookSound.setPage(page);
       });
 
       $("loading").style.display = "none";
@@ -512,6 +747,12 @@ body.light .stage::before{background:#a27b3b12}
   $("thumbBtn").onclick = () => $("drawer").classList.toggle("open");
   $("closeDrawer").onclick = () => $("drawer").classList.remove("open");
 
+  $("soundBtn").onclick = () => {
+    const on = FrenchBookSound.toggle();
+    $("soundBtn").textContent = on ? "🔊" : "🔇";
+    toast(on ? "Page-turn sound on" : "Page-turn sound off");
+  };
+
   $("modeBtn").onclick = () => {
     document.body.classList.toggle("light");
     $("modeBtn").textContent =
@@ -546,6 +787,64 @@ body.light .stage::before{background:#a27b3b12}
   });
 
 })();
+</script>
+<script>
+
+/* --- REALISTIC FLIP MOTION ENHANCEMENT --- */
+(function enhanceRealisticFlip(){
+  const book = document.getElementById('book');
+  if (!book || !window.flip) return;
+
+  let raf = 0;
+  let lastState = 'read';
+
+  function animate(){
+    raf = 0;
+    const items = book.querySelectorAll('.stf__item');
+    items.forEach(el => {
+      const style = getComputedStyle(el);
+      const tr = style.transform;
+      if (tr && tr !== 'none') {
+        el.style.filter = 'drop-shadow(0 8px 13px rgba(0,0,0,.13))';
+      }
+    });
+  }
+
+  function kick(){
+    if (!raf) raf = requestAnimationFrame(animate);
+  }
+
+  try {
+    flip.on('changeState', (e) => {
+      lastState = e && e.data ? e.data : lastState;
+      book.classList.toggle('is-turning', lastState !== 'read');
+      kick();
+    });
+    flip.on('flip', kick);
+  } catch(e) {}
+
+  const style = document.createElement('style');
+  style.textContent = `
+    #book.is-turning .stf__item {
+      will-change: transform, filter;
+    }
+    #book.is-turning .stf__item.--simple,
+    #book.is-turning .stf__item.--hard {
+      transition: filter .08s linear;
+    }
+  `;
+  document.head.appendChild(style);
+})();
+
+setTimeout(() => {
+  try {
+    if (window.flip) {
+      const ev = new Event('DOMContentLoaded');
+      document.dispatchEvent(ev);
+    }
+  } catch(e) {}
+}, 250);
+
 </script>
 </body>
 </html>
